@@ -215,16 +215,16 @@ public:
 	string filename_right;
 	string header;
 	string tail;
-	int x_left_home = 323;
+	int x_left_home = 275;
 	int y_left_home = 88;
-	int x_right_home = 255;
+	int x_right_home = 210;
 	int y_right_home = 88;
 	int x_left;
 	int y_left;
 	int x_right;
 	int y_right;
-	int width = 70;
-	int height = 70;
+	int width = 155;
+	int height = 140;
 	Rect rectangle_left = Rect(x_left_home, y_left_home, width, height);
 	Rect rectangle_right = Rect(x_right_home, y_right_home, width, height);
 

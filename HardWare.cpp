@@ -3,6 +3,28 @@
 #include "math.h"
 #include "Hardware.h"
 
+
+// http://stackoverflow.com/a/25927081
+void BindStdHandlesToConsole()
+{
+	// Redirect the CRT standard input, output, and error handles to the console
+	freopen("CONIN$", "r", stdin);
+	freopen("CONOUT$", "w", stdout);
+	freopen("CONOUT$", "w", stderr);
+
+	//Clear the error state for each of the C++ standard stream objects. We need to do this, as
+	//attempts to access the standard streams before they refer to a valid target will cause the
+	//iostream objects to enter an error state. In versions of Visual Studio after 2005, this seems
+	//to always occur during startup regardless of whether anything has been read from or written to
+	//the console or not.
+	std::wcout.clear();
+	std::cout.clear();
+	std::wcerr.clear();
+	std::cerr.clear();
+	std::wcin.clear();
+	std::cin.clear();
+}
+
 ImagingResources	CTCSys::IR;
 
 CTCSys::CTCSys()
@@ -18,6 +40,25 @@ CTCSys::CTCSys()
 	IR.FrameID = 0;
 	IR.CatchBall = FALSE;
 	OPENF("c:\\Projects\\RunTest.txt");
+
+	// Create a console to cout to
+	// http://stackoverflow.com/a/29569225
+	//#define _CRT_SECURE_NO_WARNINGS
+	AllocConsole();
+	BindStdHandlesToConsole();
+
+	FileStorage fs_left("c:\\Projects\\BaseballCatcher - 10\\calibration\\calib_left.yaml", FileStorage::READ);
+	fs_left["CameraMatrix"] >> cameraMatrix_left;
+	fs_left["DistortionCoefficients"] >> distCoeffs_left;
+	FileStorage fs_right("C:\\Projects\\BaseballCatcher - 10\\calibration\\calib_right.yaml", FileStorage::READ);
+	fs_right["CameraMatrix"] >> cameraMatrix_right;
+	fs_right["DistortionCoefficients"] >> distCoeffs_right;
+	FileStorage fs_rectify("C:\\Projects\\BaseballCatcher - 10\\calibration\\Rectification_baseball_2.xml", FileStorage::READ);
+	fs_rectify["R1"] >> R1;
+	fs_rectify["P1"] >> P1;
+	fs_rectify["R2"] >> R2;
+	fs_rectify["P2"] >> P2;
+	fs_rectify["Q"] >> Q;
 }
 
 CTCSys::~CTCSys()
@@ -45,7 +86,7 @@ void CTCSys::QSStartThread()
 	ASSERT(QSMoveThreadHandle != NULL);
 	SetThreadPriority(QSMoveThreadHandle, THREAD_PRIORITY_HIGHEST);
 
-	FileStorage fs_left("C:\Projects\BaseballCatcher - 10\calibration\calib_left.yaml", FileStorage::READ);
+	/*FileStorage fs_left("C:\Projects\BaseballCatcher - 10\calibration\calib_left.yaml", FileStorage::READ);
 	fs_left["CameraMatrix"] >> cameraMatrix_left;
 	fs_left["DistortionCoefficients"] >> distCoeffs_left;
 	FileStorage fs_right("C:\Projects\BaseballCatcher - 10\calibration\calib_right.yaml", FileStorage::READ);
@@ -56,7 +97,7 @@ void CTCSys::QSStartThread()
 	fs_rectify["P1"] >> P1;
 	fs_rectify["R2"] >> R2;
 	fs_rectify["P2"] >> P2;
-	fs_rectify["Q"] >> Q;
+	fs_rectify["Q"] >> Q;*/
 
 }
 
@@ -181,26 +222,15 @@ long QSProcessThreadFunc(CTCSys *QS)
 				// remove the Canny function above and add your ball detection and trajectory estimation code here
 				// calculate your estimated ball x, y location in inches and assigned them to moveX, and moveY below
 			}
-
-			QS->image_left(QS->rectangle_left).copyTo(QS->roi_current_left);
-			QS->image_right(QS->rectangle_right).copyTo(QS->roi_current_right);
+			
+			QS->roi_current_left = QS->image_left(QS->rectangle_left);
+			QS->roi_current_right = QS->image_right(QS->rectangle_right);
 			QS->roi_first_left = QS->first_frame_left(QS->rectangle_left);
 			QS->roi_first_right = QS->first_frame_right(QS->rectangle_right);
 
-			QS->image_left.copyTo(QS->image_left_test);
-
-
-			QS->roi_current_left.copyTo(QS->roi_previous_left);
-			QS->roi_current_right.copyTo(QS->roi_previous_right);
-
 			QS->IR.OutBuf1[0] = QS->image_left;
 			QS->IR.OutBuf1[1] = QS->image_right;
-			if (QS->roi_previous_left.empty() || QS->roi_previous_right.empty())
-			{
-				QS->roi_previous_left = Mat::zeros(QS->roi_current_left.size(), QS->roi_current_left.type()); // prev frame as black
-				QS->roi_previous_right = Mat::zeros(QS->roi_current_right.size(), QS->roi_current_right.type()); // prev frame as black
-				//signed 16bit mat to receive signed difference
-			}
+
 			absdiff(QS->roi_current_left, QS->roi_first_left, QS->motion_left);
 			absdiff(QS->roi_current_right, QS->roi_first_right, QS->motion_right);
 			GaussianBlur(QS->motion_left, QS->motion_left, Size(11, 11), 0, 0);
@@ -208,7 +238,11 @@ long QSProcessThreadFunc(CTCSys *QS)
 			threshold(QS->motion_left, QS->frame_thresh_left, 4, 255, 0);
 			threshold(QS->motion_right, QS->frame_thresh_right, 4, 255, 0);
 			findContours(QS->frame_thresh_left, QS->contours_left, QS->hierarchy_left, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE);
-			findContours(QS->frame_thresh_right, QS->contours_right, QS->hierarchy_right, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+			findContours(QS->frame_thresh_right, QS->contours_right, QS->hierarchy_right, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE);
+
+			//if (!QS->contours_left.empty())
+			//	drawContours(QS->frame_thresh_left, QS->contours_left, 0, Scalar(200, 200, 200), 2, LINE_8, 0x7fffffff);
+
 
 
 			for (int k = 0; k < QS->contours_left.size(); k++)
@@ -218,7 +252,6 @@ long QSProcessThreadFunc(CTCSys *QS)
 				{
 					QS->largest_area_left = QS->area_left;
 					QS->area_left_iter = k;
-
 				}
 			}
 			for (int k = 0; k < QS->contours_right.size(); k++)
@@ -230,9 +263,8 @@ long QSProcessThreadFunc(CTCSys *QS)
 					QS->area_right_iter = k;
 				}
 			}
-			//QS->contours_left.erase(QS->contours_left.begin() + 0);
 
-			drawContours(QS->frame_thresh_left, QS->contours_left, 0, Scalar(255, 255, 255), 2, LINE_8, 0x7fffffff);
+			//drawContours(QS->frame_thresh_left, QS->contours_left, 0, Scalar(255, 255, 255), 2, LINE_8, 0x7fffffff);
 
 			vector<Moments> contour_moments_left(QS->contours_left.size());
 			vector<Moments> contour_moments_right(QS->contours_right.size());
@@ -264,26 +296,26 @@ long QSProcessThreadFunc(CTCSys *QS)
 				QS->x_left = (int)mc_left[0].x + QS->x_left - QS->width / 2;
 				QS->y_left = (int)mc_left[0].y + QS->y_left - QS->height / 2;
 
-				if (QS->x_left < 0 || QS->y_left < 0 || QS->x_left > 640 - QS->width || QS->y_left > 480 - QS->height)
-				{
-					QS->rectangle_left = Rect(QS->x_left_home, QS->y_left_home, QS->width, QS->height);
-					QS->perspective_left.clear();
-				}
-				QS->rectangle_left = Rect(QS->x_left, QS->y_left, QS->width, QS->height);
+			//	if (QS->x_left < 0 || QS->y_left < 0 || QS->x_left > 640 - QS->width || QS->y_left > 480 - QS->height)
+			//	{
+			//		QS->rectangle_left = Rect(QS->x_left_home, QS->y_left_home, QS->width, QS->height);
+			//		QS->perspective_left.clear();
+			//	}
+			//	QS->rectangle_left = Rect(QS->x_left, QS->y_left, QS->width, QS->height);
 				circle(QS->IR.OutBuf1[0], Point2f(QS->x_left + QS->width / 2, QS->y_left + QS->height / 2), 5, Scalar(255, 255, 255), 2, LINE_8, 0);
-				//QS->IR.OutBuf1[0] = QS->image_left_test;
+			//	//QS->IR.OutBuf1[0] = QS->image_left_test;
 			}
 
 			if (!QS->contours_right.empty())
 			{
 				QS->x_right = (int)mc_right[1].x + QS->x_right - QS->width / 2;
 				QS->y_right = (int)mc_right[1].y + QS->y_right - QS->height / 2;
-				if (QS->x_right < 0 || QS->y_right < 0 || QS->x_right > 640 - QS->width || QS->y_right > 480 - QS->height)
-				{
-					QS->rectangle_right = Rect(QS->x_right_home, QS->y_right_home, QS->width, QS->height);
-					QS->perspective_right.clear();
-				}
-				QS->rectangle_right = Rect(QS->x_right, QS->y_right, QS->width, QS->height);
+			//	if (QS->x_right < 0 || QS->y_right < 0 || QS->x_right > 640 - QS->width || QS->y_right > 480 - QS->height)
+			//	{
+			//		QS->rectangle_right = Rect(QS->x_right_home, QS->y_right_home, QS->width, QS->height);
+			//		QS->perspective_right.clear();
+			//	}
+			//	QS->rectangle_right = Rect(QS->x_right, QS->y_right, QS->width, QS->height);
 				circle(QS->IR.OutBuf1[1], Point2f(QS->x_right + QS->width / 2, QS->y_right + QS->height / 2), 5, Scalar(255, 255, 255), 2, LINE_8, 0);
 			}
 
@@ -292,7 +324,10 @@ long QSProcessThreadFunc(CTCSys *QS)
 
 			if (!QS->contours_left.empty() && !QS->contours_right.empty())
 			{
+
 				QS->point_left = { Point2f(QS->x_left + QS->width / 2, QS->y_left + QS->height / 2) };
+				//string test = to_string(QS->rectangle_left.x);
+
 				undistortPoints(QS->point_left, QS->point_left, QS->cameraMatrix_left, QS->distCoeffs_left, QS->R1, QS->P1);
 
 				QS->point_right = { Point2f(QS->x_right + QS->width / 2, QS->y_right + QS->height / 2) };
@@ -306,65 +341,66 @@ long QSProcessThreadFunc(CTCSys *QS)
 
 				perspectiveTransform(QS->corners_diff_left, QS->perspective_left, QS->Q);
 				perspectiveTransform(QS->corners_diff_right, QS->perspective_right, QS->Q);
-				//QS->ball_left.push_back(Point3f(QS->perspective_left[0].x, QS->perspective_left[0].y, QS->perspective_left[0].z));
-				//QS->ball_right.push_back(Point3f(QS->perspective_right[0].x, QS->perspective_right[0].y, QS->perspective_right[0].z));
+				//cout << QS->perspective_left << endl;
 			}
+		
 
-			if(perspective_left.size() > 20)
-			{
-			for(int i=0;i<leftCam3DBallCoords.size();i++)
-    {
-        leftToCatcher = cv::Point3f(perspective_left[i].x + x_offset, perspective_left[i].y + y_offset, perspective_left[i].z + z_offset);
-        //rightToCatcher = cv::Point3f(rightCam3DBallCoordsInLeftCoordFrame[i].x + x_offset, rightCam3DBallCoordsInLeftCoordFrame[i].y + y_offset, rightCam3DBallCoordsInLeftCoordFrame[i].z + z_offset);
-        //ballLeftCatcher.push_back(leftToCatcher);
-        //ballRigthCatcher.push_back(rightToCatcher);
-        catcher_points.push_back(leftToCatcher);
-        // catcher_points.push_back(rightToCatcher);
+			// 		if(perspective_left.size() > 20)
+			// 		{
+			// 		for(int i=0;i<perspective_left.size();i++)
+			//   {
+			//       leftToCatcher = cv::Point3f(perspective_left[i].x + x_offset, perspective_left[i].y + y_offset, perspective_left[i].z + z_offset);
+			//       //rightToCatcher = cv::Point3f(rightCam3DBallCoordsInLeftCoordFrame[i].x + x_offset, rightCam3DBallCoordsInLeftCoordFrame[i].y + y_offset, rightCam3DBallCoordsInLeftCoordFrame[i].z + z_offset);
+			//       //ballLeftCatcher.push_back(leftToCatcher);
+			//       //ballRigthCatcher.push_back(rightToCatcher);
+			//       catcher_points.push_back(leftToCatcher);
+			//       // catcher_points.push_back(rightToCatcher);
+			//
+			// 			//____________OPENCV_METHOD for Least Squares ___________________
+			//  //y = Ax^3 + Bx^2 + Cx + D
+			//
+			//  //create A_y Mat and b_z Mat
+			//  cv::Mat A(catcher_points.size(),4, CV_32F);
+			//  cv::Mat b_yz(catcher_points.size(),1, CV_32F);
+			//  cv::Mat b_xz(catcher_points.size(),1, CV_32F);
+			//
+			//  //populate the A matrix and the b matrix for the yz data
+			//  for(int i=0;i<catcher_points.size();i++)
+			//  {
+			// 		 //y = Ax^3 + Bx^2 + Cx + D
+			// 		 //.at<float>(y,x)
+			// 		 A.at<float>(i,0) = catcher_points[i].z * catcher_points[i].z * catcher_points[i].z;
+			// 		 A.at<float>(i,1) = catcher_points[i].z * catcher_points[i].z;
+			// 		 A.at<float>(i,2) = catcher_points[i].z;
+			// 		 A.at<float>(i,3) = 1;
+			//
+			// 		 b_yz.at<float>(i,0) = catcher_points[i].y;
+			// 		 b_xz.at<float>(i,0) = catcher_points[i].x;
+			//  }
+			//
+			//  //use Mat::inv to calculate inv(A)
+			//  cv::Mat A_inv = A.inv(cv::DECOMP_SVD);
+			//  cv::Mat x_yz(4,1, CV_32F);
+			//  cv::Mat x_xz(4,1, CV_32F);
+			//
+			//  x_yz = A_inv*b_yz;
+			//  x_xz = A_inv*b_xz;
+			//
+			//
+			//  //generate catcher commands
+			//  float catcherX_cmd = x_xz.at<float>(3,0);
+			//  float catcherY_cmd = x_yz.at<float>(3,0);
 
-				//____________OPENCV_METHOD for Least Squares ___________________
-	 //y = Ax^3 + Bx^2 + Cx + D
 
-	 //create A_y Mat and b_z Mat
-	 cv::Mat A(catcher_points.size(),4, CV_32F);
-	 cv::Mat b_yz(catcher_points.size(),1, CV_32F);
-	 cv::Mat b_xz(catcher_points.size(),1, CV_32F);
+			//_____________END OPENCV METHOD for least squares
+			//}
+		//}
+		QS->area_left_iter = 0;
+		QS->area_right_iter = 0;
+		QS->largest_area_left = 0;
+		QS->largest_area_right = 0;
+	} // End if Catchball
 
-	 //populate the A matrix and the b matrix for the yz data
-	 for(int i=0;i<catcher_points.size();i++)
-	 {
-			 //y = Ax^3 + Bx^2 + Cx + D
-			 //.at<float>(y,x)
-			 A.at<float>(i,0) = catcher_points[i].z * catcher_points[i].z * catcher_points[i].z;
-			 A.at<float>(i,1) = catcher_points[i].z * catcher_points[i].z;
-			 A.at<float>(i,2) = catcher_points[i].z;
-			 A.at<float>(i,3) = 1;
-
-			 b_yz.at<float>(i,0) = catcher_points[i].y;
-			 b_xz.at<float>(i,0) = catcher_points[i].x;
-	 }
-
-	 //use Mat::inv to calculate inv(A)
-	 cv::Mat A_inv = A.inv(cv::DECOMP_SVD);
-	 cv::Mat x_yz(4,1, CV_32F);
-	 cv::Mat x_xz(4,1, CV_32F);
-
-	 x_yz = A_inv*b_yz;
-	 x_xz = A_inv*b_xz;
-
-
-	 //generate catcher commands
-	 float catcherX_cmd = x_xz.at<float>(3,0);
-	 float catcherY_cmd = x_yz.at<float>(3,0);
-
-
-	 //_____________END OPENCV METHOD for least squares
-    }
-	}
-			QS->area_left_iter = 0;
-			QS->area_right_iter = 0;
-			QS->largest_area_left = 0;
-			QS->largest_area_right = 0;
-		} // End if Catchball
 		else // This happens when you hit stop catch. Dallin.
 		{
 			j = 1; // Reset the iterator so when catch ball is clicked again, a new first frame will be grabbed. Dallin.
@@ -411,10 +447,10 @@ long QSProcessThreadFunc(CTCSys *QS)
 			}
 		}
 		BufID = 1 - BufID;
-	}
+}
 
-	QS->EventEndProcess = FALSE;
-	return 0;
+QS->EventEndProcess = FALSE;
+return 0;
 }
 
 void CTCSys::QSSysInit()
