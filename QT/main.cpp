@@ -44,6 +44,9 @@ int main(int argc, char *argv[])
     header = "/home/dallin/robotic_vision/HW4/ImagesDallin/Ball_test";
     tail = ".bmp";
 
+    ball_catcher ball_left;
+    ball_catcher ball_right;
+
     for(int i = 1; i < 100; i++)
     {
         filename_left = header + "L" + to_string(i) + tail;
@@ -52,12 +55,20 @@ int main(int argc, char *argv[])
         image_left = imread(filename_left,CV_LOAD_IMAGE_GRAYSCALE);
         image_right = imread(filename_right,CV_LOAD_IMAGE_GRAYSCALE);
 
+        if(i == 1)
+        {
+            ball_left.get_first_image(image_left);
+            ball_right.get_first_image(image_right);
+        }
+
+
         imshow("Left", image_left);
         imshow("right", image_right);
         moveWindow("right",643,23);
         waitKey(50);
-
     }
+    imshow("first",ball_left.image_first);
+    imshow("first_right",ball_right.image_first);
 
     waitKey(0);
 
