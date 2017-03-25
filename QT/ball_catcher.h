@@ -18,6 +18,7 @@ class ball_catcher
 public:
     ball_catcher();
     void get_first_image(Mat);
+    Point2d process_image(Mat);
 };
 
 

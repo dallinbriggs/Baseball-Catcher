@@ -1,3 +1,4 @@
 *.user
 build/
 build_debug/
+*.autosave
